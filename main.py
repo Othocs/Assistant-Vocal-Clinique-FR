@@ -1,4 +1,5 @@
-#!/usr/bin/env python3
+
+    #!/usr/bin/env python3
 """
 Bot d'enregistrement de patients utilisant Pipecat et Google Calendar
 Ce script configure un agent conversationnel pour la planification des rendez-vous des patients dans une clinique.
@@ -39,6 +40,11 @@ from pipecat.transports.services.daily import DailyParams, DailyTransport
 from pipecat.services.deepgram import DeepgramSTTService, Language, LiveOptions
 from pipecat.services.elevenlabs import ElevenLabsTTSService
 
+from pipecat.services.gemini_multimodal_live.gemini import GeminiMultimodalLiveLLMService, InputParams
+from pipecat.services.google import GoogleLLMContext
+
+
+
 # Import our Google Calendar integration
 from google_calendar_integration import (
     get_calendar_function_schemas,
@@ -77,7 +83,7 @@ async def main():
                 vad_events=True
             )
         )
-
+        '''
         tts = CartesiaTTSService(
             api_key=os.getenv("CARTESIA_API_KEY"),
             voice_id="5c3c89e5-535f-43ef-b14d-f8ffe148c1f0",
@@ -89,6 +95,9 @@ async def main():
                 "curiosity"
                 ] )
         )
+        '''
+
+        
                 # Configure service
         tts = ElevenLabsTTSService(
             api_key=os.getenv("ELEVEN_LABS_API_KEY"),
@@ -99,16 +108,6 @@ async def main():
             )
         )
 
-        llm = OpenAILLMService(api_key=os.getenv("OPENAI_API_KEY"), model="gpt-4o")
-
-        # Register all calendar functions with the LLM service
-        register_calendar_functions(llm)
-
-        # Get calendar function schemas
-        calendar_functions = get_calendar_function_schemas()
-        
-        # Create tools schema with calendar functions
-        tools = ToolsSchema(standard_tools=calendar_functions)
 
         # Get current date and time info for system prompt
         now = get_current_time()
@@ -185,7 +184,31 @@ async def main():
         - Si vous ne comprenez pas une demande, demandez poliment au patient de reformuler
         - Terminez toujours l'appel en résumant les informations du rendez-vous ou en confirmant qu'aucun rendez-vous n'a été pris
         """
+        
+        '''
+        llm = GeminiMultimodalLiveLLMService(
+            api_key=os.getenv("GEMINI_API_KEY"),
+            #voice_id="Fenrir",    
+            model="models/gemini-2.0-flash-exp",                # Voices: Aoede, Charon, Fenrir, Kore, Puck
+            transcribe_user_audio=False,          # Enable speech-to-text for user input
+            transcribe_model_audio=False,         # Enable speech-to-text for model responses
+            params=InputParams(temperature=0.4, language=Language.FR) # Set model input params
+        )
+        '''
+        llm = OpenAILLMService(api_key=os.getenv("OPENAI_API_KEY"), model="gpt-4o",params=OpenAILLMService.InputParams(
+        temperature=0.4,
+        max_tokens=1000,
+        language=Language.FR
+    ))
 
+        # Register all calendar functions with the LLM service
+        register_calendar_functions(llm)
+
+        # Get calendar function schemas
+        calendar_functions = get_calendar_function_schemas()
+        
+        # Create tools schema with calendar functions
+        tools = ToolsSchema(standard_tools=calendar_functions)
         messages = [
             {
                 "role": "system",
@@ -194,6 +217,8 @@ async def main():
         ]
 
         context = OpenAILLMContext(messages, tools)
+        #context = GoogleLLMContext(messages, tools)
+
         context_aggregator = llm.create_context_aggregator(context)
 
         pipeline = Pipeline(
