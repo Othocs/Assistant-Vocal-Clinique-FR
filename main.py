@@ -37,6 +37,7 @@ from pipecat.services.openai import OpenAILLMService
 from pipecat.transports.services.daily import DailyParams, DailyTransport
 
 from pipecat.services.deepgram import DeepgramSTTService, Language, LiveOptions
+from pipecat.services.elevenlabs import ElevenLabsTTSService
 
 # Import our Google Calendar integration
 from google_calendar_integration import (
@@ -87,6 +88,15 @@ async def main():
                 "positivity:high",
                 "curiosity"
                 ] )
+        )
+                # Configure service
+        tts = ElevenLabsTTSService(
+            api_key=os.getenv("ELEVEN_LABS_API_KEY"),
+            voice_id="McVZB9hVxVSk3Equu8EH",
+            sample_rate=24000,
+            params=ElevenLabsTTSService.InputParams(
+                language=Language.FR
+            )
         )
 
         llm = OpenAILLMService(api_key=os.getenv("OPENAI_API_KEY"), model="gpt-4o")
