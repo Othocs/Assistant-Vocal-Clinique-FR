@@ -269,6 +269,7 @@ async def schedule_appointment(function_name: str, tool_call_id: str, args: Dict
         date_str = args.get('date')
         time_str = args.get('time')
         reason = args.get('reason', 'Consultation médicale')
+        calendar_id = args.get('calendar_id', 'primary')  # Utilise 'primary' par défaut, mais permet de spécifier un autre calendrier
         
         if not all([patient_name, date_str, time_str]):
             await result_callback({
@@ -340,11 +341,20 @@ async def schedule_appointment(function_name: str, tool_call_id: str, args: Dict
         }
         
         # Add the event to the calendar
-        event = service.events().insert(calendarId='primary', body=event).execute()
+        event = service.events().insert(calendarId=calendar_id, body=event).execute()
         
         # Format the date and time nicely for the result in French
         formatted_date = date.strftime("%A %d %B %Y").capitalize()
         formatted_time = f"{hour:02d}h{minute:02d}" if minute > 0 else f"{hour:02d}h"
+        
+        # Obtenir le nom du calendrier utilisé
+        calendar_name = "Principal"
+        if calendar_id != 'primary':
+            try:
+                calendar_info = service.calendars().get(calendarId=calendar_id).execute()
+                calendar_name = calendar_info.get('summary', 'Spécialiste')
+            except:
+                pass
         
         await result_callback({
             "success": True,
@@ -354,7 +364,9 @@ async def schedule_appointment(function_name: str, tool_call_id: str, args: Dict
             "formatted_date": formatted_date,
             "time": formatted_time,
             "reason": reason,
-            "message": f"Rendez-vous programmé pour {patient_name} le {formatted_date} à {formatted_time}"
+            "calendar_id": calendar_id,
+            "calendar_name": calendar_name,
+            "message": f"Rendez-vous programmé pour {patient_name} le {formatted_date} à {formatted_time} avec {calendar_name}"
         })
         
     except Exception as e:
@@ -443,6 +455,161 @@ async def cancel_appointment(function_name: str, tool_call_id: str, args: Dict, 
             "error": str(e)
         })
 
+async def list_calendars(function_name: str, tool_call_id: str, args: Dict, llm: Any, context: Any, result_callback: Any) -> None:
+    """
+    Liste tous les calendriers et sous-calendriers disponibles pour l'utilisateur
+    
+    Args:
+        function_name: The name of the function being called
+        tool_call_id: The ID of the tool call
+        args: Empty args dict
+        llm: The LLM service instance
+        context: The context object
+        result_callback: Callback to send results back to the LLM
+    """
+    try:
+        # Get calendar service
+        service = get_calendar_service()
+        
+        # Récupère la liste des calendriers
+        calendar_list = service.calendarList().list().execute()
+        calendars = calendar_list.get('items', [])
+        
+        # Prépare le résultat sous forme de liste structurée
+        calendar_info = []
+        primary_calendar_id = None
+        
+        for calendar in calendars:
+            # Obtient l'ID du calendrier principal
+            if calendar.get('primary', False):
+                primary_calendar_id = calendar['id']
+                
+            calendar_info.append({
+                "id": calendar['id'],
+                "summary": calendar.get('summary', 'Sans titre'),
+                "description": calendar.get('description', ''),
+                "is_primary": calendar.get('primary', False),
+                "access_role": calendar.get('accessRole', ''),
+                "background_color": calendar.get('backgroundColor', ''),
+                "time_zone": calendar.get('timeZone', '')
+            })
+        
+        await result_callback({
+            "calendars": calendar_info,
+            "primary_calendar_id": primary_calendar_id,
+            "total_calendars": len(calendar_info)
+        })
+    
+    except Exception as e:
+        await result_callback({
+            "error": str(e)
+        })
+
+async def check_availability_for_calendar(function_name: str, tool_call_id: str, args: Dict, llm: Any, context: Any, result_callback: Any) -> None:
+    """
+    Vérifier la disponibilité d'un calendrier spécifique à une date donnée
+    
+    Args:
+        function_name: The name of the function being called
+        tool_call_id: The ID of the tool call
+        args: Arguments containing date and calendar_id to check availability
+        llm: The LLM service instance
+        context: The context object
+        result_callback: Callback to send results back to the LLM
+    """
+    try:
+        # Parse the date and calendar_id from arguments
+        date_str = args.get('date')
+        calendar_id = args.get('calendar_id', 'primary')
+        
+        if not date_str:
+            await result_callback({"available_slots": [], "error": "Aucune date fournie"})
+            return
+
+        # Parse date, handling relative references
+        date = parse_relative_date(date_str)
+        
+        # If the parsed date is a weekend, inform the user
+        if date.weekday() >= 5:  # Saturday or Sunday
+            await result_callback({
+                "date": date_str,
+                "formatted_date": date.strftime("%A %d %B %Y").capitalize(),
+                "available_slots": [],
+                "is_today": date == get_current_time().date(),
+                "is_weekday": False,
+                "error": "Cette date tombe un week-end. La clinique est fermée."
+            })
+            return
+                
+        # Get calendar service
+        service = get_calendar_service()
+        
+        # Try to get the calendar name
+        calendar_name = "Calendrier principal"
+        try:
+            calendar_info = service.calendars().get(calendarId=calendar_id).execute()
+            calendar_name = calendar_info.get('summary', 'Calendrier principal')
+        except Exception:
+            # If we can't get the calendar details, continue with the default name
+            pass
+        
+        # Set time boundaries for the specified date
+        time_min = datetime.datetime.combine(date, datetime.time.min).replace(tzinfo=TIMEZONE_PYTZ).isoformat()
+        time_max = datetime.datetime.combine(date, datetime.time.max).replace(tzinfo=TIMEZONE_PYTZ).isoformat()
+        
+        # Get events from the calendar
+        events_result = service.events().list(
+            calendarId=calendar_id,
+            timeMin=time_min,
+            timeMax=time_max,
+            singleEvents=True,
+            orderBy='startTime'
+        ).execute()
+        
+        events = events_result.get('items', [])
+        
+        # Define working hours (9 AM to 5 PM)
+        working_hours_start = 9  # 9h
+        working_hours_end = 17   # 17h
+        slot_duration = 30       # 30 minutes per slot
+        
+        # Generate all possible slots
+        all_slots = []
+        for hour in range(working_hours_start, working_hours_end):
+            for minute in [0, 30]:
+                slot_time = f"{hour:02d}h{minute:02d}" if minute > 0 else f"{hour:02d}h"
+                all_slots.append(slot_time)
+        
+        # Mark booked slots
+        booked_slots = []
+        for event in events:
+            start = event['start'].get('dateTime')
+            if start:
+                start_time = datetime.datetime.fromisoformat(start.replace('Z', '+00:00'))
+                # Convert to Paris time
+                start_time = start_time.astimezone(TIMEZONE_PYTZ)
+                slot = f"{start_time.hour:02d}h{start_time.minute:02d}" if start_time.minute > 0 else f"{start_time.hour:02d}h"
+                booked_slots.append(slot)
+        
+        # Find available slots
+        available_slots = [slot for slot in all_slots if slot not in booked_slots]
+        
+        # Format the date nicely for display in French
+        formatted_date = date.strftime("%A %d %B %Y").capitalize()
+        
+        await result_callback({
+            "date": date_str,
+            "formatted_date": formatted_date,
+            "calendar_id": calendar_id,
+            "calendar_name": calendar_name,
+            "available_slots": available_slots,
+            "is_today": date == get_current_time().date(),
+            "is_weekday": date.weekday() < 5
+        })
+        
+    except Exception as e:
+        await result_callback({"error": str(e)})
+
 def get_calendar_function_schemas() -> List[FunctionSchema]:
     """
     Return the function schemas for Google Calendar integration
@@ -469,6 +636,22 @@ def get_calendar_function_schemas() -> List[FunctionSchema]:
         required=["date"],
     )
     
+    check_availability_for_calendar_schema = FunctionSchema(
+        name="check_availability_for_calendar",
+        description="Vérifier la disponibilité d'un calendrier spécifique à une date donnée",
+        properties={
+            "date": {
+                "type": "string",
+                "description": "La date pour vérifier la disponibilité (format JJ/MM/AAAA, ou relative comme 'aujourd'hui', 'demain', 'lundi prochain', etc.)",
+            },
+            "calendar_id": {
+                "type": "string",
+                "description": "L'identifiant du calendrier à vérifier",
+            }
+        },
+        required=["date"],
+    )
+    
     schedule_appointment_schema = FunctionSchema(
         name="schedule_appointment",
         description="Programmer un nouveau rendez-vous pour un patient",
@@ -488,6 +671,10 @@ def get_calendar_function_schemas() -> List[FunctionSchema]:
             "reason": {
                 "type": "string",
                 "description": "La raison du rendez-vous",
+            },
+            "calendar_id": {
+                "type": "string",
+                "description": "L'identifiant du calendrier dans lequel programmer le rendez-vous (par défaut: 'primary')",
             }
         },
         required=["patient_name", "date", "time"],
@@ -513,11 +700,20 @@ def get_calendar_function_schemas() -> List[FunctionSchema]:
         required=[],  # At least one of these should be provided, but handled in the function
     )
     
+    list_calendars_schema = FunctionSchema(
+        name="list_calendars",
+        description="Récupérer la liste de tous les calendriers et sous-calendriers disponibles",
+        properties={},
+        required=[],
+    )
+    
     return [
         get_current_date_schema,
         check_availability_schema,
+        check_availability_for_calendar_schema,
         schedule_appointment_schema,
-        cancel_appointment_schema
+        cancel_appointment_schema,
+        list_calendars_schema
     ]
 
 def register_calendar_functions(llm_service: Any) -> None:
@@ -529,5 +725,7 @@ def register_calendar_functions(llm_service: Any) -> None:
     """
     llm_service.register_function("get_current_date", get_current_date)
     llm_service.register_function("check_availability", check_availability)
+    llm_service.register_function("check_availability_for_calendar", check_availability_for_calendar)
     llm_service.register_function("schedule_appointment", schedule_appointment)
-    llm_service.register_function("cancel_appointment", cancel_appointment) 
+    llm_service.register_function("cancel_appointment", cancel_appointment)
+    llm_service.register_function("list_calendars", list_calendars) 
