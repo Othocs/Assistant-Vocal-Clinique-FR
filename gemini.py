@@ -25,6 +25,9 @@ from pipecat.services.cartesia import CartesiaTTSService
 from pipecat.services.google import GoogleLLMService
 from pipecat.transports.services.daily import DailyParams, DailyTransport
 
+# Import client functions
+from client_functions import get_client_function_schemas, register_client_functions
+
 load_dotenv(override=True)
 
 logger.remove(0)
@@ -72,9 +75,15 @@ async def main():
         )
 
         llm = GoogleLLMService(api_key=os.getenv("GEMINI_API_KEY"), model="gemini-2.0-flash-001")
+        
+        # Register default functions
         llm.register_function("get_weather", get_weather)
         llm.register_function("get_image", get_image)
+        
+        # Register client database functions
+        register_client_functions(llm)
 
+        # Default function schemas
         weather_function = FunctionSchema(
             name="get_weather",
             description="Get the current weather",
@@ -91,6 +100,7 @@ async def main():
             },
             required=["location", "format"],
         )
+        
         get_image_function = FunctionSchema(
             name="get_image",
             description="Get an image from the video stream.",
@@ -102,14 +112,36 @@ async def main():
             },
             required=["question"],
         )
-        tools = ToolsSchema(standard_tools=[weather_function, get_image_function])
+        
+        # Get client database function schemas
+        client_function_schemas = get_client_function_schemas()
+        
+        # Combine all function schemas
+        all_function_schemas = [weather_function, get_image_function] + client_function_schemas
+        tools = ToolsSchema(standard_tools=all_function_schemas)
 
         system_prompt = """\
 You are a helpful assistant who converses with a user and answers questions. Respond concisely to general questions.
 
 Your response will be turned into speech so use only simple words and punctuation.
 
-You have access to two tools: get_weather and get_image.
+You have access to various tools:
+1. get_weather: Provides weather information for a specified location.
+2. get_image: Answers questions about the user's video stream.
+3. Client database functions:
+   - add_client: Adds a new client to the database with first name, last name, email, and phone.
+   - verify_client: Checks if a client exists in the database by email or phone.
+   - update_client: Updates an existing client's information.
+   - find_client_by_email: Finds a client using their email address.
+   - find_client_by_phone: Finds a client using their phone number.
+   - list_all_clients: Lists all clients in the database.
+
+When interacting with clients, you should follow these guidelines:
+- Use verify_client when the user wants to check if they are in the system
+- Use add_client when the user wants to add a new client or register
+- Use update_client when the user wants to update their information
+- Use find_client_by_email or find_client_by_phone when looking up specific clients
+- Use list_all_clients when an overview of all clients is needed
 
 You can respond to questions about the weather using the get_weather tool.
 
@@ -166,3 +198,5 @@ indicate you should use the get_image tool are:
 
 if __name__ == "__main__":
     asyncio.run(main())
+
+
