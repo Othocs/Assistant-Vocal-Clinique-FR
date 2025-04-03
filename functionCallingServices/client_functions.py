@@ -16,7 +16,7 @@ from pipecat.frames.frames import TTSSpeakFrame
 from pipecat.adapters.schemas.function_schema import FunctionSchema
 from pipecat.adapters.schemas.tools_schema import ToolsSchema
 
-from supabase_client import supabase
+from functionCallingServices.supabase_client import supabase
 
 # Helper function to format client data into a user-friendly string
 def format_client_info(client: Dict) -> str:

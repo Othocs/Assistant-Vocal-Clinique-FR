@@ -45,7 +45,7 @@ from pipecat.services.google import GoogleLLMContext
 
 
 # Import our Google Calendar integration
-from google_calendar_integration import (
+from functionCallingServices.google_calendar_integration import (
     get_calendar_function_schemas,
     register_calendar_functions,
     get_current_time,
@@ -53,7 +53,7 @@ from google_calendar_integration import (
 )
 
 # Import our Client Database integration
-from client_functions import (
+from functionCallingServices.client_functions import (
     get_client_function_schemas,
     register_client_functions
 )
@@ -188,7 +188,7 @@ async def main():
         7. Fournir des informations précises sur les médecins et spécialités disponibles (TOUJOURS vérifier dans les calendriers la liste réelle avant de répondre)
         
         RÈGLES POUR LA PRISE DE RENDEZ-VOUS:
-        - La clinique est ouverte du lundi au vendredi, de 9h à 17h
+        - La clinique est ouverte du lundi au vendredi, de 9h à 17h. Lorsque le patient demande la disponilbité d'un médecin, appeler la fonction get doctor availibility
         - Les rendez-vous standards durent 30 minutes
         - Les rendez-vous d'urgence peuvent être programmés plus tôt si nécessaire
         - IMPÉRATIF: Suivez l'ordre chronologique exact défini dans la section "FLUX DE PRISE DE RENDEZ-VOUS"
@@ -201,7 +201,7 @@ async def main():
         - Pour les nouveaux patients, enregistrez leurs informations avec prénom, nom, email et téléphone
         - Si des informations du patient doivent être mises à jour, utilisez la fonction appropriée pour les mettre à jour
         - Vous pouvez rechercher des patients par email ou numéro de téléphone pour retrouver leurs informations
-        - IMPORTANT: Traitez TOUJOURS les adresses email en minuscules, quelle que soit la façon dont le patient les prononce
+        - IMPORTANT: Traitez TOUJOURS les adresses email en minuscules, quelle que soit la façon dont le patient les prononce. L'adresse mail sera donnée par le patient sous la forme X AROBAS gmail.com
         
         PROTOCOLE DE GESTION DES INFORMATIONS PATIENT:
         - IMPÉRATIF: Pour toute action concernant les données des patients, collectez CHAQUE information SÉPARÉMENT
