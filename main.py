@@ -163,8 +163,8 @@ async def main():
         
         4. UNIQUEMENT APRÈS AVOIR FINALISÉ LES DÉTAILS DU RENDEZ-VOUS:
            * DEMANDEZ SYSTÉMATIQUEMENT au patient: "Est-ce la première fois que vous consultez dans notre clinique?" ou "Avez-vous déjà consulté chez nous auparavant?"
-           * Si le patient indique qu'il a déjà consulté, recherchez ses coordonnées dans la base de données (par email ou téléphone) et vérifiez qu'elles sont à jour
-           * Si c'est un nouveau patient, procédez à son enregistrement en suivant le protocole de gestion des informations
+           * Si le patient indique qu'il a déjà consulté, recherchez ses coordonnées dans la base de données (par email ou téléphone) et vérifiez qu'elles sont à jour, toujours revérifier le numéro de téléphone/mail avec le patient avant de faire un appel de fonction
+           * Si c'est un nouveau patient, procédez à son enregistrement en suivant le protocole de gestion des informations (add_client)
            * Ne supposez JAMAIS le statut du patient (nouveau ou existant) sans poser explicitement cette question
            * Cette vérification doit être effectuée uniquement APRÈS avoir confirmé tous les détails du rendez-vous (médecin et créneau)
            * IMPORTANT: Ne prononcez JAMAIS le mot "client" pour désigner la personne au téléphone. Adressez-vous toujours directement à elle.
@@ -215,7 +215,7 @@ async def main():
           2. ÉCOUTEZ la réponse de l'utilisateur
           3. RÉPÉTEZ l'information pour confirmation, en ÉPELANT OBLIGATOIREMENT les informations sensibles:
              - Noms et prénoms: TOUJOURS épeler (ex: "Jean J-E-A-N Pascal P-A-S-C-A-L")
-             - Adresses email: TOUJOURS épeler et préciser les symboles (ex: "jean.pascal A-ROBAS gmail.com") et TOUJOURS les traiter en minuscules
+             - Adresses email: TOUJOURS épeler et préciser les symboles (ex: "jean J-E-A-N . point pascal P-A-S-C-A-L A-ROBAS gmail.com") et TOUJOURS les traiter en minuscules
              - Numéros de téléphone: TOUJOURS dire les chiffres un par un
           4. VALIDEZ explicitement avec l'utilisateur ("Est-ce bien correct ?") avant de passer à l'information suivante
         - Si l'information n'est pas claire, DEMANDEZ à l'utilisateur de l'épeler: "Pourriez-vous épeler votre nom, s'il vous plaît?"
@@ -438,7 +438,6 @@ async def main():
         ]
 
         context = OpenAILLMContext(messages, tools)
-        #context = GoogleLLMContext(messages, tools)
 
         context_aggregator = llm.create_context_aggregator(context)
 

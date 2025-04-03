@@ -70,7 +70,7 @@ async def add_client(function_name: str, tool_call_id: str, args: Dict[str, Any]
             return
             
         # Add client to database
-        await llm.push_frame(TTSSpeakFrame("Je vous ajoute à la base de données, veuillez patient un instant s'il vous plaît..."))
+        await llm.push_frame(TTSSpeakFrame("Je vous enregistre sur notre base de données, veuillez patienter un instant s'il vous plaît..."))
         client = await supabase.add_client(first_name, last_name, email, phone)
         
         success_response = {
@@ -116,10 +116,10 @@ async def verify_client(function_name: str, tool_call_id: str, args: Dict[str, A
         
         client = None
         if email:
-            await llm.push_frame(TTSSpeakFrame(f"Je vérifie si un patient avec l'email {email} existe..."))
+            await llm.push_frame(TTSSpeakFrame(f"Je vérifie si un patient enregistré avec l'email {email} existe, veuillez patienter un instant s'il vous plaît......"))
             client = await supabase.get_client_by_email(email)
         elif phone:
-            await llm.push_frame(TTSSpeakFrame(f"Je vérifie si un patient avec le numéro {phone} existe..."))
+            await llm.push_frame(TTSSpeakFrame(f"Je vérifie si un patient enregistré avec le numéro {phone} existe, veuillez patienter un instant s'il vous plaît......"))
             client = await supabase.get_client_by_phone(phone)
         
         if client:
@@ -244,11 +244,11 @@ async def find_client_by_email(function_name: str, tool_call_id: str, args: Dict
                 "found": False,
                 "error": "Veuillez fournir une adresse email pour rechercher un patient."
             }
-            await llm.push_frame(TTSSpeakFrame("J'ai besoin d'une adresse email pour trouver le patient."))
+            #await llm.push_frame(TTSSpeakFrame("J'ai besoin d'une adresse email pour trouver le patient."))
             await result_callback(error_msg)
             return
         
-        await llm.push_frame(TTSSpeakFrame(f"Je recherche un patient avec l'email {email}..."))
+        await llm.push_frame(TTSSpeakFrame(f"Je recherche un patient enregistré avec l'email {email},veuillez patienter un instant s'il vous plaît......"))
         client = await supabase.get_client_by_email(email)
         
         if client:
@@ -293,11 +293,11 @@ async def find_client_by_phone(function_name: str, tool_call_id: str, args: Dict
                 "found": False,
                 "error": "Veuillez fournir un numéro de téléphone pour rechercher un patient."
             }
-            await llm.push_frame(TTSSpeakFrame("J'ai besoin d'un numéro de téléphone pour trouver le patient."))
+           # await llm.push_frame(TTSSpeakFrame("J'ai besoin d'un numéro de téléphone pour trouver le patient."))
             await result_callback(error_msg)
             return
         
-        await llm.push_frame(TTSSpeakFrame(f"Je recherche un patient avec le numéro {phone}..."))
+        await llm.push_frame(TTSSpeakFrame(f"Je recherche un patient enregistré avec le numéro {phone}, veuillez patienter un instant s'il vous plaît..."))
         client = await supabase.get_client_by_phone(phone)
         
         if client:

@@ -635,6 +635,7 @@ async def get_doctor_availability(function_name: str, tool_call_id: str, args: D
             await result_callback({"available_slots": [], "error": "Date manquante"})
             return
 
+        await llm.push_frame(TTSSpeakFrame(f"Je vais chercher les disponiblités du docteur pour ce jour là, veuillez patienter un instant."))
         # Parse date, gestion des références relatives
         date = parse_relative_date(date_str)
         
@@ -783,6 +784,8 @@ async def schedule_appointment_with_doctor(function_name: str, tool_call_id: str
             })
             return
         
+        await llm.push_frame(TTSSpeakFrame(f"Je vais planifier dans notre système la consultation comme convenu, veuillez patienter un instant."))
+
         # Obtenir le service de calendrier
         service = get_calendar_service()
         
