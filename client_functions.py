@@ -54,7 +54,7 @@ async def add_client(function_name: str, tool_call_id: str, args: Dict[str, Any]
                 "success": False,
                 "error": "Information client incomplète. Veuillez fournir prénom, nom, email et téléphone."
             }
-            await llm.push_frame(TTSSpeakFrame("J'ai besoin de plus d'informations pour ajouter ce client."))
+            await llm.push_frame(TTSSpeakFrame("J'ai besoin de plus d'informations pour ajouter ce patient."))
             await result_callback(error_msg)
             return
         
@@ -63,19 +63,19 @@ async def add_client(function_name: str, tool_call_id: str, args: Dict[str, Any]
         if existing_client:
             response = {
                 "success": False,
-                "error": f"Un client avec l'email {email} existe déjà dans la base de données.",
+                "error": f"Un patient avec l'email {email} existe déjà dans la base de données.",
                 "client": existing_client
             }
             await result_callback(response)
             return
             
         # Add client to database
-        await llm.push_frame(TTSSpeakFrame("J'ajoute le client à la base de données..."))
+        await llm.push_frame(TTSSpeakFrame("Je vous ajoute à la base de données, veuillez patient un instant s'il vous plaît..."))
         client = await supabase.add_client(first_name, last_name, email, phone)
         
         success_response = {
             "success": True,
-            "message": f"Client {first_name} {last_name} ajouté avec succès.",
+            "message": f"Patient {first_name} {last_name} ajouté avec succès.",
             "client": client
         }
         await result_callback(success_response)
@@ -116,10 +116,10 @@ async def verify_client(function_name: str, tool_call_id: str, args: Dict[str, A
         
         client = None
         if email:
-            await llm.push_frame(TTSSpeakFrame(f"Je vérifie si un client avec l'email {email} existe..."))
+            await llm.push_frame(TTSSpeakFrame(f"Je vérifie si un patient avec l'email {email} existe..."))
             client = await supabase.get_client_by_email(email)
         elif phone:
-            await llm.push_frame(TTSSpeakFrame(f"Je vérifie si un client avec le numéro {phone} existe..."))
+            await llm.push_frame(TTSSpeakFrame(f"Je vérifie si un patient avec le numéro {phone} existe..."))
             client = await supabase.get_client_by_phone(phone)
         
         if client:
@@ -168,7 +168,7 @@ async def update_client(function_name: str, tool_call_id: str, args: Dict[str, A
                 "success": False,
                 "error": "Veuillez fournir l'ID client ou l'email pour mettre à jour les informations."
             }
-            await llm.push_frame(TTSSpeakFrame("J'ai besoin de l'identifiant ou de l'email du client pour le mettre à jour."))
+            await llm.push_frame(TTSSpeakFrame("J'ai besoin de l'identifiant ou de l'email du patient pour le mettre à jour."))
             await result_callback(error_msg)
             return
         
@@ -180,7 +180,7 @@ async def update_client(function_name: str, tool_call_id: str, args: Dict[str, A
             else:
                 error_msg = {
                     "success": False,
-                    "error": f"Aucun client trouvé avec l'email {email}."
+                    "error": f"Aucun patient trouvé avec l'email {email}."
                 }
                 await result_callback(error_msg)
                 return
@@ -205,12 +205,12 @@ async def update_client(function_name: str, tool_call_id: str, args: Dict[str, A
             return
             
         # Update client in database
-        await llm.push_frame(TTSSpeakFrame("Je mets à jour les informations du client..."))
+        await llm.push_frame(TTSSpeakFrame("Je mets à jour les informations du patient..."))
         updated_client = await supabase.update_client(client_id, update_data)
         
         success_response = {
             "success": True,
-            "message": "Informations client mises à jour avec succès.",
+            "message": "Informations patient mises à jour avec succès.",
             "client": updated_client
         }
         await result_callback(success_response)
@@ -219,7 +219,7 @@ async def update_client(function_name: str, tool_call_id: str, args: Dict[str, A
         logger.error(f"Error in update_client function: {e}")
         error_response = {
             "success": False,
-            "error": f"Échec de la mise à jour du client: {str(e)}"
+            "error": f"Échec de la mise à jour du patient: {str(e)}"
         }
         await result_callback(error_response)
 
@@ -242,13 +242,13 @@ async def find_client_by_email(function_name: str, tool_call_id: str, args: Dict
         if not email:
             error_msg = {
                 "found": False,
-                "error": "Veuillez fournir une adresse email pour rechercher un client."
+                "error": "Veuillez fournir une adresse email pour rechercher un patient."
             }
-            await llm.push_frame(TTSSpeakFrame("J'ai besoin d'une adresse email pour trouver le client."))
+            await llm.push_frame(TTSSpeakFrame("J'ai besoin d'une adresse email pour trouver le patient."))
             await result_callback(error_msg)
             return
         
-        await llm.push_frame(TTSSpeakFrame(f"Je recherche un client avec l'email {email}..."))
+        await llm.push_frame(TTSSpeakFrame(f"Je recherche un patient avec l'email {email}..."))
         client = await supabase.get_client_by_email(email)
         
         if client:
@@ -260,7 +260,7 @@ async def find_client_by_email(function_name: str, tool_call_id: str, args: Dict
         else:
             not_found_msg = {
                 "found": False,
-                "message": f"Aucun client trouvé avec l'email {email}."
+                "message": f"Aucun patient trouvé avec l'email {email}."
             }
             await result_callback(not_found_msg)
     
@@ -268,7 +268,7 @@ async def find_client_by_email(function_name: str, tool_call_id: str, args: Dict
         logger.error(f"Error in find_client_by_email function: {e}")
         error_response = {
             "found": False,
-            "error": f"Erreur lors de la recherche du client: {str(e)}"
+            "error": f"Erreur lors de la recherche du patient: {str(e)}"
         }
         await result_callback(error_response)
 
@@ -291,13 +291,13 @@ async def find_client_by_phone(function_name: str, tool_call_id: str, args: Dict
         if not phone:
             error_msg = {
                 "found": False,
-                "error": "Veuillez fournir un numéro de téléphone pour rechercher un client."
+                "error": "Veuillez fournir un numéro de téléphone pour rechercher un patient."
             }
-            await llm.push_frame(TTSSpeakFrame("J'ai besoin d'un numéro de téléphone pour trouver le client."))
+            await llm.push_frame(TTSSpeakFrame("J'ai besoin d'un numéro de téléphone pour trouver le patient."))
             await result_callback(error_msg)
             return
         
-        await llm.push_frame(TTSSpeakFrame(f"Je recherche un client avec le numéro {phone}..."))
+        await llm.push_frame(TTSSpeakFrame(f"Je recherche un patient avec le numéro {phone}..."))
         client = await supabase.get_client_by_phone(phone)
         
         if client:
@@ -335,21 +335,21 @@ async def list_all_clients(function_name: str, tool_call_id: str, args: Dict[str
         result_callback: Callback to send results back to the LLM
     """
     try:
-        await llm.push_frame(TTSSpeakFrame("Je récupère tous les clients..."))
+        await llm.push_frame(TTSSpeakFrame("Je récupère tous les patients..."))
         clients = await supabase.get_clients()
         
         if not clients:
             await result_callback({
                 "count": 0,
                 "clients": [],
-                "message": "Aucun client trouvé dans la base de données."
+                "message": "Aucun patient trouvé dans la base de données."
             })
             return
         
         response = {
             "count": len(clients),
             "clients": clients,
-            "message": f"Trouvé {len(clients)} clients dans la base de données."
+            "message": f"Trouvé {len(clients)} patients dans la base de données."
         }
         
         await result_callback(response)
@@ -372,23 +372,23 @@ def get_client_function_schemas() -> List[FunctionSchema]:
     """
     add_client_function = FunctionSchema(
         name="add_client",
-        description="Ajouter un nouveau client à la base de données",
+        description="Ajouter un nouveau patient à la base de données",
         properties={
             "first_name": {
                 "type": "string",
-                "description": "Le prénom du client",
+                "description": "Le prénom du patient",
             },
             "last_name": {
                 "type": "string",
-                "description": "Le nom de famille du client",
+                "description": "Le nom de famille du patient",
             },
             "email": {
                 "type": "string",
-                "description": "L'adresse email du client",
+                "description": "L'adresse email du patient",
             },
             "phone": {
                 "type": "string",
-                "description": "Le numéro de téléphone du client",
+                "description": "Le numéro de téléphone du patient",
             },
         },
         required=["first_name", "last_name", "email", "phone"],
@@ -400,11 +400,11 @@ def get_client_function_schemas() -> List[FunctionSchema]:
         properties={
             "email": {
                 "type": "string",
-                "description": "L'adresse email du client à vérifier",
+                "description": "L'adresse email du patient à vérifier",
             },
             "phone": {
                 "type": "string",
-                "description": "Le numéro de téléphone du client à vérifier",
+                "description": "Le numéro de téléphone du patient à vérifier",
             },
         },
         required=[],  # Requires either email or phone, but not both necessarily
@@ -412,31 +412,31 @@ def get_client_function_schemas() -> List[FunctionSchema]:
     
     update_client_function = FunctionSchema(
         name="update_client",
-        description="Mettre à jour les informations d'un client existant",
+        description="Mettre à jour les informations d'un patient existant",
         properties={
             "client_id": {
                 "type": "string",
-                "description": "L'identifiant unique du client à mettre à jour",
+                "description": "L'identifiant unique du patient à mettre à jour",
             },
             "email": {
                 "type": "string",
-                "description": "L'email actuel du client (alternative à client_id pour identifier le client)",
+                "description": "L'email actuel du patient (alternative à client_id pour identifier le client)",
             },
             "first_name": {
                 "type": "string",
-                "description": "Le nouveau prénom du client",
+                "description": "Le nouveau prénom du patient",
             },
             "last_name": {
                 "type": "string",
-                "description": "Le nouveau nom de famille du client",
+                "description": "Le nouveau nom de famille du patient",
             },
             "new_email": {
                 "type": "string",
-                "description": "La nouvelle adresse email du client",
+                "description": "La nouvelle adresse email du patient",
             },
             "phone": {
                 "type": "string",
-                "description": "Le nouveau numéro de téléphone du client",
+                "description": "Le nouveau numéro de téléphone du patient",
             },
         },
         required=[],  # Requires either client_id or email, plus at least one field to update
@@ -444,7 +444,7 @@ def get_client_function_schemas() -> List[FunctionSchema]:
     
     find_client_by_email_function = FunctionSchema(
         name="find_client_by_email",
-        description="Rechercher un client par adresse email",
+        description="Rechercher un patient par adresse email",
         properties={
             "email": {
                 "type": "string",
@@ -456,7 +456,7 @@ def get_client_function_schemas() -> List[FunctionSchema]:
     
     find_client_by_phone_function = FunctionSchema(
         name="find_client_by_phone",
-        description="Rechercher un client par numéro de téléphone",
+        description="Rechercher un patient par numéro de téléphone",
         properties={
             "phone": {
                 "type": "string",
@@ -468,7 +468,7 @@ def get_client_function_schemas() -> List[FunctionSchema]:
     
     list_all_clients_function = FunctionSchema(
         name="list_all_clients",
-        description="Lister tous les clients dans la base de données",
+        description="Lister tous les patients dans la base de données",
         properties={},
         required=[],
     )
