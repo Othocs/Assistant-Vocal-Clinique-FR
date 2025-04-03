@@ -33,7 +33,7 @@ Ce projet est un assistant vocal IA conversationnel conçu pour aider les patien
 - **Daily.co** : API de communication en temps réel pour les appels audio
 - **Deepgram** : Reconnaissance vocale (Speech-to-Text)
 - **ElevenLabs** : Synthèse vocale (Text-to-Speech)
-- **OpenAI / Gemini** : Modèles LLM pour le traitement du langage naturel
+- **OpenAI** : Modèles LLM pour le traitement du langage naturel
 
 ## Structure du projet
 
