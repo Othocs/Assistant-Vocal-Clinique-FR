@@ -610,6 +610,330 @@ async def check_availability_for_calendar(function_name: str, tool_call_id: str,
     except Exception as e:
         await result_callback({"error": str(e)})
 
+async def get_doctor_availability(function_name: str, tool_call_id: str, args: Dict, llm: Any, context: Any, result_callback: Any) -> None:
+    """
+    Recherche les disponibilités d'un médecin spécifique pour une date donnée en consultant son sous-calendrier
+    
+    Args:
+        function_name: The name of the function being called
+        tool_call_id: The ID of the tool call
+        args: Arguments containing doctor name and date
+        llm: The LLM service instance
+        context: The context object
+        result_callback: Callback to send results back to the LLM
+    """
+    try:
+        # Extraire les arguments
+        doctor_name = args.get('doctor_name')
+        date_str = args.get('date')
+        
+        if not doctor_name:
+            await result_callback({"available_slots": [], "error": "Nom du médecin manquant"})
+            return
+            
+        if not date_str:
+            await result_callback({"available_slots": [], "error": "Date manquante"})
+            return
+
+        # Parse date, gestion des références relatives
+        date = parse_relative_date(date_str)
+        
+        # Vérifier si la date est un week-end
+        if date.weekday() >= 5:  # Samedi ou Dimanche
+            await result_callback({
+                "doctor_name": doctor_name,
+                "date": date_str,
+                "formatted_date": date.strftime("%A %d %B %Y").capitalize(),
+                "available_slots": [],
+                "is_today": date == get_current_time().date(),
+                "is_weekday": False,
+                "error": f"Le {date.strftime('%A %d %B').capitalize()} est un jour de week-end. Le cabinet est fermé."
+            })
+            return
+                
+        # Obtenir le service de calendrier
+        service = get_calendar_service()
+        
+        # Récupérer la liste des calendriers
+        calendar_list = service.calendarList().list().execute()
+        calendars = calendar_list.get('items', [])
+        
+        # Chercher le calendrier du médecin
+        doctor_calendar_id = None
+        doctor_calendar_name = None
+        
+        # Normaliser le nom du médecin pour la recherche
+        doctor_name_lower = doctor_name.lower()
+        
+        for calendar in calendars:
+            calendar_summary = calendar.get('summary', '').lower()
+            # Vérifier si le nom du médecin apparaît dans le nom du calendrier
+            if doctor_name_lower in calendar_summary:
+                doctor_calendar_id = calendar['id']
+                doctor_calendar_name = calendar.get('summary')
+                break
+        
+        # Si aucun calendrier spécifique n'est trouvé, utiliser le calendrier principal
+        if not doctor_calendar_id:
+            # Informer qu'aucun calendrier spécifique n'a été trouvé
+            await result_callback({
+                "doctor_name": doctor_name,
+                "date": date_str,
+                "formatted_date": date.strftime("%A %d %B %Y").capitalize(),
+                "available_slots": [],
+                "is_today": date == get_current_time().date(),
+                "is_weekday": date.weekday() < 5,
+                "error": f"Aucun calendrier trouvé pour le Dr {doctor_name}. Veuillez vérifier le nom ou contacter l'administrateur."
+            })
+            return
+        
+        # Définir les limites de temps pour la date spécifiée
+        time_min = datetime.datetime.combine(date, datetime.time.min).replace(tzinfo=TIMEZONE_PYTZ).isoformat()
+        time_max = datetime.datetime.combine(date, datetime.time.max).replace(tzinfo=TIMEZONE_PYTZ).isoformat()
+        
+        # Récupérer les événements du calendrier
+        events_result = service.events().list(
+            calendarId=doctor_calendar_id,
+            timeMin=time_min,
+            timeMax=time_max,
+            singleEvents=True,
+            orderBy='startTime'
+        ).execute()
+        
+        events = events_result.get('items', [])
+        
+        # Définir les heures de travail (9h à 17h par défaut)
+        working_hours_start = 9
+        working_hours_end = 17
+        slot_duration = 30  # 30 minutes par créneau
+        
+        # Générer tous les créneaux possibles
+        all_slots = []
+        for hour in range(working_hours_start, working_hours_end):
+            for minute in [0, 30]:
+                slot_time = f"{hour:02d}h{minute:02d}" if minute > 0 else f"{hour:02d}h"
+                all_slots.append(slot_time)
+        
+        # Marquer les créneaux réservés
+        booked_slots = []
+        booked_slots_details = []
+        
+        for event in events:
+            start = event['start'].get('dateTime')
+            if start:
+                start_time = datetime.datetime.fromisoformat(start.replace('Z', '+00:00'))
+                # Convertir à l'heure de Paris
+                start_time = start_time.astimezone(TIMEZONE_PYTZ)
+                slot = f"{start_time.hour:02d}h{start_time.minute:02d}" if start_time.minute > 0 else f"{start_time.hour:02d}h"
+                booked_slots.append(slot)
+                
+                # Ajouter les détails du rendez-vous (pour le débogage ou l'affichage détaillé)
+                booked_slots_details.append({
+                    "time": slot,
+                    "summary": event.get('summary', 'Rendez-vous privé'),
+                    "id": event['id']
+                })
+        
+        # Trouver les créneaux disponibles
+        available_slots = [slot for slot in all_slots if slot not in booked_slots]
+        
+        # Formater la date pour l'affichage en français
+        formatted_date = date.strftime("%A %d %B %Y").capitalize()
+        
+        await result_callback({
+            "doctor_name": doctor_name,
+            "doctor_calendar_id": doctor_calendar_id,
+            "doctor_calendar_name": doctor_calendar_name,
+            "date": date_str,
+            "formatted_date": formatted_date,
+            "available_slots": available_slots,
+            "booked_slots": booked_slots,
+            "total_available_slots": len(available_slots),
+            "is_today": date == get_current_time().date(),
+            "is_weekday": date.weekday() < 5
+        })
+        
+    except Exception as e:
+        await result_callback({"error": str(e)})
+
+async def schedule_appointment_with_doctor(function_name: str, tool_call_id: str, args: Dict, llm: Any, context: Any, result_callback: Any) -> None:
+    """
+    Programmer un rendez-vous avec un médecin spécifique en utilisant son sous-calendrier
+    
+    Args:
+        function_name: The name of the function being called
+        tool_call_id: The ID of the tool call
+        args: Arguments containing appointment details
+        llm: The LLM service instance
+        context: The context object
+        result_callback: Callback to send results back to the LLM
+    """
+    try:
+        # Extraire les détails du rendez-vous
+        patient_name = args.get('patient_name')
+        doctor_name = args.get('doctor_name')
+        date_str = args.get('date')
+        time_str = args.get('time')
+        reason = args.get('reason', 'Consultation médicale')
+        
+        if not all([patient_name, doctor_name, date_str, time_str]):
+            await result_callback({
+                "success": False,
+                "error": "Informations manquantes pour le rendez-vous"
+            })
+            return
+        
+        # Obtenir le service de calendrier
+        service = get_calendar_service()
+        
+        # Trouver le calendrier du médecin
+        calendar_list = service.calendarList().list().execute()
+        calendars = calendar_list.get('items', [])
+        
+        doctor_calendar_id = None
+        doctor_calendar_name = None
+        
+        # Normaliser le nom du médecin pour la recherche
+        doctor_name_lower = doctor_name.lower()
+        
+        for calendar in calendars:
+            calendar_summary = calendar.get('summary', '').lower()
+            if doctor_name_lower in calendar_summary:
+                doctor_calendar_id = calendar['id']
+                doctor_calendar_name = calendar.get('summary')
+                break
+        
+        # Si aucun calendrier n'est trouvé pour le médecin, informer l'utilisateur
+        if not doctor_calendar_id:
+            await result_callback({
+                "success": False,
+                "error": f"Aucun calendrier trouvé pour le Dr {doctor_name}. Veuillez vérifier le nom ou contacter l'administrateur."
+            })
+            return
+        
+        # Parse date et heure
+        date = parse_relative_date(date_str)
+        
+        # Vérifier si la date est un week-end
+        if date.weekday() >= 5:  # Samedi ou Dimanche
+            await result_callback({
+                "success": False,
+                "error": f"Impossible de prendre rendez-vous le week-end. La date {date.strftime('%A %d %B').capitalize()} tombe un week-end."
+            })
+            return
+        
+        # Parse le temps en format français (ex: "14h30" ou "14h")
+        if 'h' in time_str:
+            parts = time_str.split('h')
+            hour = int(parts[0])
+            minute = int(parts[1]) if parts[1] else 0
+        else:
+            # Essayer de parser comme format HH:MM en fallback
+            parts = time_str.split(':')
+            if len(parts) == 2:
+                hour = int(parts[0])
+                minute = int(parts[1])
+            else:
+                # Juste l'heure
+                hour = int(time_str)
+                minute = 0
+            
+        # Vérifier si l'heure est dans les heures de travail
+        if hour < 9 or hour >= 17 or (hour == 17 and minute > 0):
+            await result_callback({
+                "success": False,
+                "error": "Impossible de prendre rendez-vous en dehors des heures d'ouverture (9h à 17h)."
+            })
+            return
+        
+        # Vérifier si le créneau est disponible
+        slot_to_check = f"{hour:02d}h{minute:02d}" if minute > 0 else f"{hour:02d}h"
+        
+        # Définir les limites de temps pour la date spécifiée
+        time_min = datetime.datetime.combine(date, datetime.time.min).replace(tzinfo=TIMEZONE_PYTZ).isoformat()
+        time_max = datetime.datetime.combine(date, datetime.time.max).replace(tzinfo=TIMEZONE_PYTZ).isoformat()
+        
+        # Récupérer les événements du calendrier
+        events_result = service.events().list(
+            calendarId=doctor_calendar_id,
+            timeMin=time_min,
+            timeMax=time_max,
+            singleEvents=True,
+            orderBy='startTime'
+        ).execute()
+        
+        events = events_result.get('items', [])
+        
+        # Vérifier si le créneau est déjà réservé
+        slot_already_booked = False
+        for event in events:
+            start = event['start'].get('dateTime')
+            if start:
+                start_time = datetime.datetime.fromisoformat(start.replace('Z', '+00:00'))
+                start_time = start_time.astimezone(TIMEZONE_PYTZ)
+                event_slot = f"{start_time.hour:02d}h{start_time.minute:02d}" if start_time.minute > 0 else f"{start_time.hour:02d}h"
+                if event_slot == slot_to_check:
+                    slot_already_booked = True
+                    break
+        
+        if slot_already_booked:
+            await result_callback({
+                "success": False,
+                "error": f"Le créneau {slot_to_check} le {date.strftime('%A %d %B').capitalize()} est déjà réservé. Veuillez choisir un autre horaire."
+            })
+            return
+            
+        # Créer les heures de début et de fin (rendez-vous de 30 minutes par défaut)
+        start_time = datetime.datetime.combine(date, datetime.time(hour, minute))
+        # Appliquer le fuseau horaire de Paris
+        start_time = TIMEZONE_PYTZ.localize(start_time)
+        end_time = start_time + datetime.timedelta(minutes=30)
+        
+        # Formater les heures pour l'API Google Calendar
+        start_time_str = start_time.isoformat()
+        end_time_str = end_time.isoformat()
+        
+        # Créer l'événement
+        event = {
+            'summary': f"Rendez-vous: {patient_name}",
+            'description': reason,
+            'start': {
+                'dateTime': start_time_str,
+                'timeZone': TIMEZONE,
+            },
+            'end': {
+                'dateTime': end_time_str,
+                'timeZone': TIMEZONE,
+            },
+        }
+        
+        # Ajouter l'événement au calendrier
+        event = service.events().insert(calendarId=doctor_calendar_id, body=event).execute()
+        
+        # Formater la date et l'heure pour le résultat en français
+        formatted_date = date.strftime("%A %d %B %Y").capitalize()
+        formatted_time = f"{hour:02d}h{minute:02d}" if minute > 0 else f"{hour:02d}h"
+        
+        await result_callback({
+            "success": True,
+            "appointment_id": event['id'],
+            "patient_name": patient_name,
+            "doctor_name": doctor_name,
+            "doctor_calendar_id": doctor_calendar_id,
+            "doctor_calendar_name": doctor_calendar_name,
+            "date": date_str,
+            "formatted_date": formatted_date,
+            "time": formatted_time,
+            "reason": reason,
+            "message": f"Rendez-vous programmé pour {patient_name} avec {doctor_calendar_name} le {formatted_date} à {formatted_time}"
+        })
+        
+    except Exception as e:
+        await result_callback({
+            "success": False,
+            "error": str(e)
+        })
+
 def get_calendar_function_schemas() -> List[FunctionSchema]:
     """
     Return the function schemas for Google Calendar integration
@@ -652,6 +976,22 @@ def get_calendar_function_schemas() -> List[FunctionSchema]:
         required=["date"],
     )
     
+    get_doctor_availability_schema = FunctionSchema(
+        name="get_doctor_availability",
+        description="Rechercher les disponibilités d'un médecin spécifique pour une date donnée en consultant son sous-calendrier",
+        properties={
+            "doctor_name": {
+                "type": "string",
+                "description": "Le nom du médecin (ex: 'Dr David Niel', 'Dr. Martin')",
+            },
+            "date": {
+                "type": "string",
+                "description": "La date pour vérifier la disponibilité (format JJ/MM/AAAA, ou relative comme 'aujourd'hui', 'demain', 'lundi prochain', etc.)",
+            }
+        },
+        required=["doctor_name", "date"],
+    )
+    
     schedule_appointment_schema = FunctionSchema(
         name="schedule_appointment",
         description="Programmer un nouveau rendez-vous pour un patient",
@@ -678,6 +1018,34 @@ def get_calendar_function_schemas() -> List[FunctionSchema]:
             }
         },
         required=["patient_name", "date", "time"],
+    )
+    
+    schedule_appointment_with_doctor_schema = FunctionSchema(
+        name="schedule_appointment_with_doctor",
+        description="Programmer un rendez-vous avec un médecin spécifique en utilisant son sous-calendrier",
+        properties={
+            "patient_name": {
+                "type": "string",
+                "description": "Le nom complet du patient",
+            },
+            "doctor_name": {
+                "type": "string",
+                "description": "Le nom du médecin (ex: 'Dr David Niel', 'Dr. Martin')",
+            },
+            "date": {
+                "type": "string",
+                "description": "La date du rendez-vous (format JJ/MM/AAAA, ou relative comme 'aujourd'hui', 'demain', 'lundi prochain', etc.)",
+            },
+            "time": {
+                "type": "string", 
+                "description": "L'heure du rendez-vous (format HHhMM ou HH:MM, par exemple '14h30' ou '14:30')",
+            },
+            "reason": {
+                "type": "string",
+                "description": "La raison du rendez-vous",
+            }
+        },
+        required=["patient_name", "doctor_name", "date", "time"],
     )
     
     cancel_appointment_schema = FunctionSchema(
@@ -711,7 +1079,9 @@ def get_calendar_function_schemas() -> List[FunctionSchema]:
         get_current_date_schema,
         check_availability_schema,
         check_availability_for_calendar_schema,
+        get_doctor_availability_schema,
         schedule_appointment_schema,
+        schedule_appointment_with_doctor_schema,
         cancel_appointment_schema,
         list_calendars_schema
     ]
@@ -724,8 +1094,10 @@ def register_calendar_functions(llm_service: Any) -> None:
         llm_service: The OpenAI LLM service instance to register functions with
     """
     llm_service.register_function("get_current_date", get_current_date)
-    llm_service.register_function("check_availability", check_availability)
-    llm_service.register_function("check_availability_for_calendar", check_availability_for_calendar)
-    llm_service.register_function("schedule_appointment", schedule_appointment)
+    #llm_service.register_function("check_availability", check_availability)
+    #llm_service.register_function("check_availability_for_calendar", check_availability_for_calendar)
+    llm_service.register_function("get_doctor_availability", get_doctor_availability)
+    #llm_service.register_function("schedule_appointment", schedule_appointment)
+    llm_service.register_function("schedule_appointment_with_doctor", schedule_appointment_with_doctor)
     llm_service.register_function("cancel_appointment", cancel_appointment)
     llm_service.register_function("list_calendars", list_calendars) 
