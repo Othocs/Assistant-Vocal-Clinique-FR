@@ -1,4 +1,4 @@
-# VoccaAI - Assistant Clinique Vocal
+# Assistant Clinique Vocal
 
 Un assistant vocal IA français pour la gestion des rendez-vous médicaux, intégré avec Google Calendar et une base de données patient.
 
